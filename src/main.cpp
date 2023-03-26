@@ -2,6 +2,7 @@
 #include <functional>
 #include <ArduinoLog.h>
 
+#include "Servo.h"
 
 #if !( defined(ESP32) ) && !( defined(ESP8266) )
   #error This code is intended to run on ESP8266 platform! Please check your Tools->Board setting.
@@ -15,6 +16,9 @@ CWifiManager *wifiManager;
 
 unsigned long tsSmoothBoot;
 bool smoothBoot;
+
+unsigned long tsS;
+Servo s;
 
 void setup() {
   delay( 1000 ); // power-up safety delay
@@ -43,6 +47,9 @@ void setup() {
 
   wifiManager = new CWifiManager();
 
+  s.attach(D7);
+  tsS = millis();
+
   Log.noticeln("Setup completed!");
 }
 
@@ -64,5 +71,12 @@ void loop() {
   //
   // Code goes here
   //
+  if (millis() - tsS > 2000) {
+    tsS = millis();
+    s.write(s.read() == 0 ? 180 : 0);
+  }
+
   delay(50);
+
+
 }
