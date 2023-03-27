@@ -43,7 +43,56 @@ void EEPROM_loadConfig() {
     Log.infoln("Blank configuration, loading defaults");
     strcpy(configuration._loaded, "jaisor");
     strcpy(configuration.name, DEVICE_NAME);
+    #ifdef LED
+      configuration.ledBrightness = LED_BRIGHTNESS;
+      strcpy(configuration.ntpServer, NTP_SERVER);
+      configuration.gmtOffset_sec = NTP_GMT_OFFSET_SEC;
+      configuration.daylightOffset_sec = NTP_DAYLIGHT_OFFSET_SEC;
+      configuration.ledMode = 0;
+      configuration.ledCycleModeMs = LED_CHANGE_MODE_SEC * 1000;
+      configuration.ledDelayMs = 10;
+      configuration.ledBrightness = LED_BRIGHTNESS;
+      configuration.ledStripSize = LED_STRIP_SIZE;
+    #endif
+    #ifdef WIFI
+      strcpy(configuration.ntpServer, NTP_SERVER);
+      configuration.gmtOffset_sec = NTP_GMT_OFFSET_SEC;
+      configuration.daylightOffset_sec = NTP_DAYLIGHT_OFFSET_SEC;
+      strcpy(configuration.mqttServer, "");
+      configuration.mqttPort = 1883;
+      strcpy(configuration.mqttTopic, "");
+      configuration.mqttDataType = MQTT_DATA_JSON;
+    #endif
+
+    configuration.battVoltsDivider = BATTERY_VOLTS_DIVIDER;
+    configuration.deepSleepDurationSec = DEEP_SLEEP_INTERVAL_SEC;
+    configuration.tempUnit = TEMP_UNIT_CELSIUS;
+
+    EEPROM_saveConfig();
   }
+
+#ifdef LED
+  if (isnan(configuration.ledBrightness)) {
+    Log.verboseln("NaN brightness");
+    configuration.ledBrightness = LED_BRIGHTNESS;
+  }
+  if (isnan(configuration.ledMode)) {
+    Log.verboseln("NaN ledMode");
+    configuration.ledMode = 0;
+  }
+  if (isnan(configuration.ledCycleModeMs)) {
+    Log.verboseln("NaN ledCycleModeMs");
+    configuration.ledCycleModeMs = 0;
+  }
+  if (isnan(configuration.ledDelayMs)) {
+    Log.verboseln("NaN ledDelayMs");
+    configuration.ledDelayMs = 10;
+  }
+  if (isnan(configuration.ledStripSize)) {
+    Log.verboseln("NaN ledStripSize");
+    configuration.ledStripSize = LED_STRIP_SIZE;
+  }
+#endif
 
 #ifdef WIFI
   String wifiStr = String(configuration.wifiSsid);
@@ -65,8 +114,9 @@ void EEPROM_loadConfig() {
 }
 
 void EEPROM_wipe() {
-  Log.warningln("Wiping configuration!");
+  Log.warningln("Wiping configuration with size %i!", EEPROM.length());
   for (uint16_t i = 0; i < EEPROM.length() ; i++) {
     EEPROM.write(i, 0);
   }
+  EEPROM.commit();
 }

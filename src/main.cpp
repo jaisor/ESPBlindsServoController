@@ -2,42 +2,56 @@
 #include <functional>
 #include <ArduinoLog.h>
 
-#include "Servo.h"
-
 #if !( defined(ESP32) ) && !( defined(ESP8266) )
   #error This code is intended to run on ESP8266 platform! Please check your Tools->Board setting.
 #endif
 
-#include <vector>
+#include "Servo.h"
 
 #include "wifi/WifiManager.h"
+#include "Device.h"
+
+#ifdef ESP32
+#elif ESP8266
+  ADC_MODE(ADC_TOUT);
+#endif
 
 CWifiManager *wifiManager;
+CDevice *device;
+
 
 unsigned long tsSmoothBoot;
 bool smoothBoot;
+unsigned long tsMillisBooted;
 
 unsigned long tsS;
 Servo s;
+const int BUTTON = D1;
+bool buttonDown = 0;
 
 void setup() {
-  delay( 1000 ); // power-up safety delay
-
-  Serial.begin(115200);
-  while(!Serial && !Serial.available()){}
+  Serial.begin(115200);  while (!Serial); delay(200);
   randomSeed(analogRead(0));
 
-  Log.begin(LOG_LEVEL_VERBOSE, &Serial);
-  Log.noticeln("******************************************");  
+  //Log.begin(LOG_LEVEL_VERBOSE, &Serial);
+  Log.begin(LOG_LEVEL_NOTICE, &Serial);
+  Log.noticeln("Initializing...");  
+
+  pinMode(INTERNAL_LED_PIN, OUTPUT);
+  #ifdef ESP32
+    digitalWrite(INTERNAL_LED_PIN, HIGH);
+  #elif ESP8266
+    digitalWrite(INTERNAL_LED_PIN, LOW);
+  #endif
+  
 
 #ifdef LED_PIN_BOARD
-  pinMode(LED_PIN_BOARD, OUTPUT);
   digitalWrite(LED_PIN_BOARD, HIGH);
 #endif
 
   if (EEPROM_initAndCheckFactoryReset() >= 3) {
     Log.warningln("Factory reset conditions met!");
-    EEPROM_wipe();    
+    EEPROM_wipe();  
   }
 
   tsSmoothBoot = millis();
@@ -45,38 +59,77 @@ void setup() {
 
   EEPROM_loadConfig();
 
-  wifiManager = new CWifiManager();
-
+  device = new CDevice();
+  wifiManager = new CWifiManager(device);
+  pinMode(BUTTON, INPUT_PULLUP);
+  
   s.attach(D7);
   tsS = millis();
+  s.write(0);
+  delay(1000);
 
-  Log.noticeln("Setup completed!");
+  Log.infoln("Initialized");
 }
 
 void loop() {
-  static unsigned long tsMillis = millis();
-
+  
   if (!smoothBoot && millis() - tsSmoothBoot > FACTORY_RESET_CLEAR_TIMER_MS) {
     smoothBoot = true;
     EEPROM_clearFactoryReset();
+    tsMillisBooted = millis();
     Log.noticeln("Device booted smoothly!");
   }
-  
+
+  device->loop();
   wifiManager->loop();
 
   if (wifiManager->isRebootNeeded()) {
     return;
   }
-
-  //
-  // Code goes here
-  //
-  if (millis() - tsS > 2000) {
-    tsS = millis();
-    s.write(s.read() == 0 ? 180 : 0);
+  
+  // Conditions for deep sleep:
+  // - Min time elapsed since smooth boot (to catch up on any MQTT messages)
+  // - Smooth boot
+  // - Wifi not in AP mode
+  // - Succesfully submitted 1 sensor reading over MQTT
+  if (smoothBoot 
+    && configuration.deepSleepDurationSec > 0 
+    && millis() - tsMillisBooted > DEEP_SLEEP_MIN_AWAKE_MS
+    && wifiManager->isJobDone() ) {
+    delay(100);
+    Log.noticeln("Initiating deep sleep for %u usec", configuration.deepSleepDurationSec );
+    #ifdef ESP32
+      digitalWrite(INTERNAL_LED_PIN, LOW);
+      ESP.deepSleep((uint64_t)configuration.deepSleepDurationSec * 1e6);
+    #elif ESP8266
+      digitalWrite(INTERNAL_LED_PIN, HIGH);
+      ESP.deepSleep((uint64_t)configuration.deepSleepDurationSec * 1e6); 
+    #endif
   }
 
-  delay(50);
+/*
+  if (configuration.deepSleepDurationSec > 0 && device->getUptime() > configuration.deepSleepDurationSec * 1000) {
+    Log.noticeln("Device is not sleeping right, resetting to save battery");
+    #ifdef ESP32
+      ESP.restart();
+    #elif ESP8266
+      ESP.reset();
+    #endif
+  }
+*/
 
-
+  if (digitalRead(BUTTON) == 0) {
+    if (buttonDown == 0 && millis() - tsS > 100) {
+      buttonDown = 1;
+      s.write(s.read() == 0 ? 180 : 0);
+      Log.noticeln("Flipping servo! %i", millis() - tsS);
+    }
+  } else {
+    tsS = millis();
+    buttonDown = 0;
+  }
+  
+  
+  delay(200);
+  yield();
 }
