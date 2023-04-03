@@ -2,6 +2,9 @@
 #include <functional>
 #include <ArduinoLog.h>
 
+#include <Wire.h>
+#include <Adafruit_PWMServoDriver.h>
+
 #if !( defined(ESP32) ) && !( defined(ESP8266) )
   #error This code is intended to run on ESP8266 platform! Please check your Tools->Board setting.
 #endif
@@ -25,9 +28,10 @@ bool smoothBoot;
 unsigned long tsMillisBooted;
 
 unsigned long tsS;
-Servo s;
+//Servo s;
 const int BUTTON = D1;
 bool buttonDown = 0;
+Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver(0x40);
 
 void setup() {
   Serial.begin(115200);  while (!Serial); delay(200);
@@ -62,11 +66,16 @@ void setup() {
   device = new CDevice();
   wifiManager = new CWifiManager(device);
   pinMode(BUTTON, INPUT_PULLUP);
-  
-  s.attach(D7);
   tsS = millis();
+  
+  pwm.begin();
+  pwm.setPWMFreq(1600);
+
+  /*
+  s.attach(D7);
   s.write(0);
   delay(1000);
+  */
 
   Log.infoln("Initialized");
 }
@@ -121,7 +130,12 @@ void loop() {
   if (digitalRead(BUTTON) == 0) {
     if (buttonDown == 0 && millis() - tsS > 100) {
       buttonDown = 1;
-      s.write(s.read() == 0 ? 180 : 0);
+      pwm.setPWM(0, 4096, 0);
+      
+      //pulselength = map(s.read() == 0 ? 180 : 0, 0, 180, SERVOMIN, SERVOMAX);
+      //s.write(s.read() == 0 ? 180 : 0);
+      //https://www.aranacorp.com/en/using-a-pca9685-module-with-arduino/
+      //https://www.esp8266learning.com/pca9685-led-controller-and-esp8266-example.php#google_vignette
       Log.noticeln("Flipping servo! %i", millis() - tsS);
     }
   } else {
